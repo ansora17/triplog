@@ -1,27 +1,46 @@
 import React, { useEffect, useState } from "react";
 import { fetchTourPlaces } from "../../api/tourApi";
-import MapView from "../../components/MapView";
-import "../../index.css";
 import { fetchDetailIntro } from "../../api/tourApi"; // 상세정보 API 추가
+import MapView from "../../components/MapView";
+import TabMenu from "../../components/TabMenu";
+import ListBtn from "../../components/ListBtn";
+import SearchBar from "../../components/SearchBar";
+import DetailPanel from "../../components/DetailPanel";
+import HeaderBar from "../../components/HeaderBar";
+import "../../index.css";
 
 function TourPlanner() {
   const [allPlaces, setAllPlaces] = useState([]);
   const [type, setType] = useState("12");
   const [visibleCount, setVisibleCount] = useState(6);
   const [selectedPlace, setSelectedPlace] = useState(null);
-  const visiblePlaces = allPlaces.slice(0, visibleCount);
   const [comment, setComment] = useState("");
+  const [currentTab, setCurrentTab] = useState("여행만들기");
+  const [keyword, setKeyword] = useState("");
+  const [addedCourses, setAddedCourses] = useState([]);
+
+  // 일정 + 제목 입력용 상태
+  const [tripTitle, setTripTitle] = useState("");
+  const [duration, setDuration] = useState("당일여행");
+
+  const visiblePlaces = allPlaces.slice(0, visibleCount);
 
   useEffect(() => {
-    const load = async () => {
-      const data = await fetchTourPlaces(type, 20);
-      console.log("✅ 불러온 관광지:", data);
-      setAllPlaces(data);
-      setVisibleCount(6);
-      setSelectedPlace(null); // 초기화
-    };
-    load();
+    loadPlaces();
   }, [type]);
+
+  const loadPlaces = async () => {
+    const data = await fetchTourPlaces(type, 20);
+    setAllPlaces(data);
+    setVisibleCount(6);
+    setSelectedPlace(null);
+  };
+
+  const handleSearch = async () => {
+    const data = await fetchTourPlaces(type, 20, keyword);
+    setAllPlaces(data);
+    setVisibleCount(6);
+  };
 
   const handlePlaceClick = async (place) => {
     try {
@@ -29,12 +48,10 @@ function TourPlanner() {
         place.contentid,
         place.contenttypeid
       );
-
       const detailPlace = {
         ...place,
         ...(Array.isArray(detailData) ? detailData[0] : detailData),
       };
-
       setSelectedPlace(detailPlace);
     } catch (error) {
       console.error("❌ 상세정보 병합 실패", error);
@@ -45,8 +62,21 @@ function TourPlanner() {
   const handleLoadMore = () => setVisibleCount((prev) => prev + 6);
 
   const handleAddCourse = () => {
-    alert(`📌 [${selectedPlace.title}]가 코스에 추가되었습니다!`);
+    if (!selectedPlace) return;
+    const alreadyAdded = addedCourses.includes(selectedPlace.contentid);
+
+    if (!alreadyAdded) {
+      setAddedCourses((prev) => [...prev, selectedPlace.contentid]);
+      alert(`📌 [${selectedPlace.title}]가 코스에 추가되었습니다!`);
+    } else {
+      alert("이미 추가된 장소입니다!");
+    }
   };
+
+  const handleRemoveCourse = (id) => {
+    setAddedCourses((prev) => prev.filter((cid) => cid !== id));
+  };
+
   const handleCommentSubmit = () => {
     if (comment.trim() !== "") {
       alert(`📝 댓글 작성됨: ${comment}`);
@@ -56,31 +86,59 @@ function TourPlanner() {
 
   return (
     <div className="flex w-full h-screen">
-      {/* 왼쪽 패널 */}
-      <div className="w-[450px] bg-gray-100 flex flex-col relative z-index-100">
-        {/* 버튼 영역 */}
-        <div className="p-4 flex gap-2">
-          <button
-            onClick={() => setType("12")}
-            className="px-3 py-1 bg-blue-500 text-white rounded"
-          >
-            여행지
-          </button>
-          <button
-            onClick={() => setType("39")}
-            className="px-3 py-1 bg-green-500 text-white rounded"
-          >
-            음식점
-          </button>
+      {/* 왼쪽 사이드 영역 */}
+      <div className="w-[450px] bg-gray-100 flex flex-col relative z-10">
+        <HeaderBar
+          onBack={() => console.log("이전 페이지로 이동")} // 또는 useNavigate(-1)
+          onShare={() => alert("🔗 공유 기능은 추후 구현됩니다!")}
+        />
+
+        {/* 1. 상단 탭 */}
+        <TabMenu currentTab={currentTab} setCurrentTab={setCurrentTab} />
+
+        {/* 2. 일정 선택 + 코스 제목 */}
+        <div className="p-4">
+          <div className="flex gap-2 mb-2">
+            {["당일여행", "1박2일", "2박3일"].map((label) => (
+              <button
+                key={label}
+                className={`px-3 py-1 rounded text-white ${
+                  duration === label ? "bg-blue-500" : "bg-gray-400"
+                }`}
+                onClick={() => setDuration(label)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex align-center gap-2">
+            <input
+              type="text"
+              className="w-full border p-2 rounded mb-2"
+              placeholder="코스 제목을 입력하세요"
+              value={tripTitle}
+              onChange={(e) => setTripTitle(e.target.value)}
+            />
+          </div>
         </div>
 
-        {/* 리스트 영역 */}
+        {/* 3. 검색바 */}
+        <SearchBar
+          keyword={keyword}
+          setKeyword={setKeyword}
+          onSearch={handleSearch}
+        />
+
+        {/* 4. 여행지/음식점 버튼 */}
+        <ListBtn selectedType={type} setType={setType} />
+
+        {/* 5. 장소 리스트 */}
         <div className="flex-1 overflow-y-auto px-4 pb-4">
           {visiblePlaces.map((place) => (
             <div
               key={place.contentid}
-              onClick={() => handlePlaceClick(place)} // 클릭 시 모달 열기
-              className="bg-white p-4 mb-4 rounded-lg shadow-md"
+              onClick={() => handlePlaceClick(place)}
+              className="bg-white p-4 mb-4 rounded-lg shadow-md cursor-pointer"
             >
               <div className="flex items-center gap-4">
                 <img
@@ -98,7 +156,7 @@ function TourPlanner() {
             </div>
           ))}
 
-          {/* 더보기 버튼 */}
+          {/* 더보기 */}
           {visibleCount < allPlaces.length && (
             <button
               onClick={handleLoadMore}
@@ -112,124 +170,22 @@ function TourPlanner() {
 
       {/* 오른쪽 지도 */}
       <div className="flex-1 p-4 bg-white">
-        <MapView places={visiblePlaces} />
+        <MapView
+          places={visiblePlaces}
+          addedCourses={addedCourses}
+          onRemoveCourse={handleRemoveCourse}
+        />
       </div>
 
-      {/* ✅ 오른쪽에서 지도 위로 슬라이드 */}
-      <div
-        className={`absolute top-0 left-[460px] w-[400px] h-full bg-white shadow-lg z-50 transition-transform duration-300 ease-in-out
-          ${
-            selectedPlace
-              ? "translate-x-0 pointer-events-auto"
-              : "-translate-x-[440px] pointer-events-none opacity-0"
-          }`}
-      >
-        {/* 닫기 버튼 */}
-        <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-lg font-bold">
-            {type === "12" ? "주변 추천여행지" : "주변 추천음식점"}
-          </h2>
-          <button onClick={() => handlePlaceClick(null)} className="text-xl">
-            ✕
-          </button>
-        </div>
-
-        {/* 세부 정보 영역 */}
-        {selectedPlace && (
-          <div className="p-4 text-sm">
-            {/* 대표 이미지 */}
-            {selectedPlace.firstimage && (
-              <img
-                src={selectedPlace.firstimage}
-                alt={selectedPlace.title}
-                className="w-full h-48 object-cover rounded mb-4"
-              />
-            )}
-
-            {/* {selectedPlace.firstimage2 && (
-              <img
-                src={selectedPlace.firstimage2}
-                alt="추가 이미지"
-                className="w-full h-32 object-cover rounded mb-4"
-              />
-            )} */}
-            <p className=" text-lg font-bold mb-2"> {selectedPlace.title}</p>
-            <p className="text-gray-700 mb-2">📍 주소: {selectedPlace.addr1}</p>
-
-            {/* 🍴 음식점인 경우 */}
-            {String(selectedPlace.contenttypeid) === "39" ? (
-              <>
-                <p>
-                  운영시간:{" "}
-                  <span
-                    dangerouslySetInnerHTML={{
-                      __html: selectedPlace.opentimefood || "정보 없음",
-                    }}
-                  />
-                </p>
-                <p>
-                  <strong>휴무일:</strong>{" "}
-                  {selectedPlace.restdatefood || "정보 없음"}
-                </p>
-                <p>
-                  <strong>대표 메뉴:</strong>{" "}
-                  {selectedPlace.treatmenu || "정보 없음"}
-                </p>
-                <p>
-                  <strong>주차:</strong>{" "}
-                  {selectedPlace.parkingfood || "정보 없음"}
-                </p>
-                <p>
-                  <strong>신용카드:</strong>{" "}
-                  {selectedPlace.chkcreditcardfood || "정보 없음"}
-                </p>
-              </>
-            ) : (
-              // 🏛 여행지인 경우
-              <>
-                <p>
-                  <strong>문의 및 안내:</strong>{" "}
-                  {selectedPlace.infocenter || "정보 없음"}
-                </p>
-                <p>
-                  <strong>휴무일:</strong>{" "}
-                  {selectedPlace.restdate || "정보 없음"}
-                </p>
-                <p>
-                  <strong>이용시간:</strong>{" "}
-                  {selectedPlace.infocenter || "정보 없음"}
-                </p>
-                <p>
-                  <strong>주차:</strong> {selectedPlace.parking || "정보 없음"}
-                </p>
-              </>
-            )}
-            {/* 코스 추가 버튼 */}
-            <button
-              onClick={handleAddCourse}
-              className="w-full mt-4 bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
-            >
-              ➕ 코스에 추가
-            </button>
-            {/* 댓글 입력 */}
-            <div className="mt-6">
-              <p className="text-sm font-semibold mb-1">💬 트립톡톡</p>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                className="w-full border rounded p-2 h-24 mb-2 resize-none"
-                placeholder="댓글을 입력하세요"
-              />
-              <button
-                onClick={handleCommentSubmit}
-                className="w-full bg-gray-800 text-white py-2 rounded hover:bg-black"
-              >
-                댓글 등록
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* 오른쪽 상세 정보 패널 */}
+      <DetailPanel
+        selectedPlace={selectedPlace}
+        onClose={() => setSelectedPlace(null)}
+        onAddCourse={handleAddCourse}
+        comment={comment}
+        setComment={setComment}
+        onCommentSubmit={handleCommentSubmit}
+      />
     </div>
   );
 }
